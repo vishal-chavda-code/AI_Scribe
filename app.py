@@ -28,7 +28,6 @@ DEFAULTS = {
     "structured_output": None,
     "chat_history": [],
     "meeting_folder": None,
-    "finalized": False,
     "phase": "capture",          # capture → review → finalized
     "outlook_meetings": None,
     "confirm_generate": False,
@@ -59,11 +58,14 @@ _llm_ok, _llm_msg = validate_llm_config()
 if not _llm_ok:
     st.error(f"⚠️ LLM config error: {_llm_msg}")
     st.stop()
-# ── Sidebar: Meeting Setup ───────────────────────────────────────────────────# Initialize sidebar-scoped variables with safe defaults
+# ── Sidebar: Meeting Setup ───────────────────────────────────────────────────
+# Initialize sidebar-scoped variables with safe defaults
 meeting_subject = ""
 meeting_time = None
 meeting_attendees: list[str] = []
 meeting_body = ""
+meetings = []  # safe default when Outlook branch is skipped
+
 with st.sidebar:
     st.title("📋 AI Scribe")
     st.caption("Meeting notes → structured minutes")
@@ -74,7 +76,10 @@ with st.sidebar:
     if outlook_available():
         source_options.insert(0, "Outlook Calendar")
 
-    meeting_source = st.radio("Meeting Source", source_options, horizontal=True)
+    meeting_source = st.radio(
+        "Meeting Source", source_options, horizontal=True,
+        disabled=st.session_state.meeting_confirmed,
+    )
 
     if meeting_source == "Outlook Calendar":
         if st.session_state.outlook_meetings is None:
