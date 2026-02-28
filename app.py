@@ -35,6 +35,7 @@ DEFAULTS = {
     "confirm_new_meeting": False,
     "selected_meeting": None,    # full meeting dict from Outlook
     "direct_edit_mode": False,   # toggle for manual editing in review phase
+    "meeting_confirmed": False,  # gate: user must explicitly confirm meeting choice
 }
 for key, val in DEFAULTS.items():
     if key not in st.session_state:
@@ -80,7 +81,8 @@ with st.sidebar:
         if meetings:
             labels = [get_meeting_display_label(m) for m in meetings]
             selected_idx = st.selectbox(
-                "Select Meeting", range(len(labels)), format_func=lambda i: labels[i]
+                "Select Meeting", range(len(labels)), format_func=lambda i: labels[i],
+                disabled=st.session_state.meeting_confirmed,
             )
             selected_meeting = meetings[selected_idx]
             st.session_state.selected_meeting = selected_meeting
@@ -100,11 +102,39 @@ with st.sidebar:
             meeting_attendees = []
 
     if meeting_source == "Unscheduled":
-        meeting_subject = st.text_input("Meeting Subject", placeholder="e.g., Data Science Sync")
+        meeting_subject = st.text_input(
+            "Meeting Subject", placeholder="e.g., Data Science Sync",
+            disabled=st.session_state.meeting_confirmed,
+        )
         meeting_time = None
         meeting_attendees = []
 
-    key_player = st.text_input("Key Player / Contact", placeholder="e.g., J. Smith")
+    key_player = st.text_input(
+        "Key Player / Contact", placeholder="e.g., J. Smith",
+        disabled=st.session_state.meeting_confirmed,
+    )
+
+    # ── Confirm / Lock-in meeting selection ──────────────────────────────────
+    if not st.session_state.meeting_confirmed:
+        _can_confirm = (
+            (meeting_source == "Outlook Calendar" and meetings)
+            or (meeting_source == "Unscheduled" and meeting_subject.strip())
+        )
+        if st.button(
+            "🔒 Start Scribing",
+            use_container_width=True,
+            type="primary",
+            disabled=not _can_confirm,
+        ):
+            st.session_state.meeting_confirmed = True
+            st.rerun()
+        if not _can_confirm and meeting_source == "Unscheduled":
+            st.caption("Enter a meeting subject to begin.")
+    else:
+        st.success(f"🔒 Locked: **{meeting_subject}**")
+        if st.button("🔓 Change Meeting", use_container_width=True):
+            st.session_state.meeting_confirmed = False
+            st.rerun()
 
     st.divider()
 
@@ -152,6 +182,11 @@ today_str = datetime.date.today().isoformat()
 # ── CAPTURE PHASE ────────────────────────────────────────────────────────────
 if st.session_state.phase == "capture":
     st.header("Meeting Notes Input")
+
+    # Gate: must confirm meeting before capturing
+    if not st.session_state.meeting_confirmed:
+        st.info("👈 Select a meeting (or enter an Unscheduled subject) in the sidebar, then click **Start Scribing** to begin.")
+        st.stop()
 
     # Show accumulated notes so far (with timestamps and delete buttons)
     if st.session_state.captured_chunks:
