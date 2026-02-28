@@ -1,7 +1,5 @@
 """Windows clipboard helper — copies HTML in CF_HTML format for Outlook paste."""
 
-import ctypes
-
 
 def _build_cf_html(html_fragment: str) -> bytes:
     """Wrap an HTML fragment in the CF_HTML clipboard envelope.

@@ -4,12 +4,12 @@ import datetime
 import streamlit as st
 from lib.llm_client import get_completion
 from lib.prompts import (
-    SYSTEM_PROMPT,
-    REFINE_SYSTEM_PROMPT,
+    get_system_prompt,
+    get_refine_system_prompt,
     build_generation_messages,
     build_refinement_messages,
 )
-from lib.file_manager import build_meeting_folder, save_meeting_files
+from lib.file_manager import build_meeting_folder, save_meeting_files, validate_notes_root
 from lib.html_formatter import markdown_to_outlook_html
 from lib.outlook_cal import (
     is_available as outlook_available,
@@ -17,22 +17,24 @@ from lib.outlook_cal import (
     get_meeting_display_label,
     reply_to_meeting_with_notes,
 )
-from lib.clipboard import copy_html_to_clipboard, copy_text_to_clipboard
+from lib.clipboard import copy_html_to_clipboard
 
 # ── Page config ──────────────────────────────────────────────────────────────
 st.set_page_config(page_title="AI Scribe", page_icon="📋", layout="wide")
 
 # ── Session state defaults ───────────────────────────────────────────────────
 DEFAULTS = {
-    "captured_chunks": [],
+    "captured_chunks": [],       # list of (timestamp_str, text) tuples
     "structured_output": None,
     "chat_history": [],
     "meeting_folder": None,
     "finalized": False,
-    "phase": "capture",  # capture → review → finalized
+    "phase": "capture",          # capture → review → finalized
     "outlook_meetings": None,
     "confirm_generate": False,
-    "selected_meeting": None,  # full meeting dict from Outlook
+    "confirm_new_meeting": False,
+    "selected_meeting": None,    # full meeting dict from Outlook
+    "direct_edit_mode": False,   # toggle for manual editing in review phase
 }
 for key, val in DEFAULTS.items():
     if key not in st.session_state:
@@ -44,6 +46,12 @@ def reset_session():
     for key, val in DEFAULTS.items():
         st.session_state[key] = val
 
+
+# ── Pre-flight: validate NOTES_ROOT ──────────────────────────────────────────
+_notes_ok, _notes_msg = validate_notes_root()
+if not _notes_ok:
+    st.error(f"⚠️ Storage path error: {_notes_msg}")
+    st.stop()
 
 # ── Sidebar: Meeting Setup ───────────────────────────────────────────────────
 with st.sidebar:
@@ -63,6 +71,11 @@ with st.sidebar:
             with st.spinner("Loading calendar..."):
                 st.session_state.outlook_meetings = get_todays_meetings()
 
+        # Calendar refresh button
+        if st.button("🔄 Refresh Calendar", use_container_width=True):
+            st.session_state.outlook_meetings = get_todays_meetings()
+            st.rerun()
+
         meetings = st.session_state.outlook_meetings
         if meetings:
             labels = [get_meeting_display_label(m) for m in meetings]
@@ -73,33 +86,60 @@ with st.sidebar:
             st.session_state.selected_meeting = selected_meeting
             meeting_subject = selected_meeting["subject"]
             meeting_time = selected_meeting["start_time"].replace(":", "")
+            meeting_attendees = selected_meeting.get("attendees", [])
             st.caption(f"Organizer: {selected_meeting.get('organizer', 'N/A')}")
-            if selected_meeting.get("attendees"):
-                st.caption(f"Attendees: {', '.join(selected_meeting['attendees'][:5])}")
+            if meeting_attendees:
+                st.caption(f"Attendees: {', '.join(meeting_attendees[:5])}")
+                if len(meeting_attendees) > 5:
+                    st.caption(f"  +{len(meeting_attendees) - 5} more")
         else:
             st.warning("No meetings found for today. Using Unscheduled mode.")
             meeting_source = "Unscheduled"
             meeting_subject = ""
             meeting_time = None
+            meeting_attendees = []
 
     if meeting_source == "Unscheduled":
         meeting_subject = st.text_input("Meeting Subject", placeholder="e.g., Data Science Sync")
         meeting_time = None
+        meeting_attendees = []
 
     key_player = st.text_input("Key Player / Contact", placeholder="e.g., J. Smith")
 
     st.divider()
 
-    # New meeting button
-    if st.button("🔄 New Meeting", use_container_width=True):
-        reset_session()
-        st.rerun()
+    # New meeting button — with confirmation
+    if not st.session_state.confirm_new_meeting:
+        if st.button("🔄 New Meeting", use_container_width=True):
+            if st.session_state.captured_chunks or st.session_state.structured_output:
+                st.session_state.confirm_new_meeting = True
+                st.rerun()
+            else:
+                reset_session()
+                st.rerun()
+    else:
+        st.warning("⚠️ This will erase all captured notes and output.")
+        cnm_yes, cnm_no = st.columns([1, 1])
+        with cnm_yes:
+            if st.button("Yes, reset", use_container_width=True, type="primary"):
+                st.session_state.confirm_new_meeting = False
+                reset_session()
+                st.rerun()
+        with cnm_no:
+            if st.button("Cancel", key="cancel_new", use_container_width=True):
+                st.session_state.confirm_new_meeting = False
+                st.rerun()
 
-    # Status indicator
+    # Status indicator with segment/word count
     st.divider()
     phase = st.session_state.phase
+    chunks = st.session_state.captured_chunks
     if phase == "capture":
-        st.info("📝 **Capturing** — Type notes and press Enter")
+        if chunks:
+            total_words = sum(len(c[1].split()) for c in chunks)
+            st.info(f"📝 **Capturing** — {len(chunks)} segments, ~{total_words} words")
+        else:
+            st.info("📝 **Capturing** — Type notes and press Enter")
     elif phase == "review":
         st.success("✏️ **Reviewing** — Refine output, then Finalize")
     elif phase == "finalized":
@@ -113,14 +153,23 @@ today_str = datetime.date.today().isoformat()
 if st.session_state.phase == "capture":
     st.header("Meeting Notes Input")
 
-    # Show accumulated notes so far
+    # Show accumulated notes so far (with timestamps and delete buttons)
     if st.session_state.captured_chunks:
         with st.expander(
             f"📄 Captured so far ({len(st.session_state.captured_chunks)} segments)",
             expanded=True,
         ):
-            for i, chunk in enumerate(st.session_state.captured_chunks, 1):
-                st.text(f"[{i}] {chunk}")
+            delete_idx = None
+            for i, (ts, text) in enumerate(st.session_state.captured_chunks):
+                col_note, col_del = st.columns([10, 1])
+                with col_note:
+                    st.text(f"[{ts}] {text}")
+                with col_del:
+                    if st.button("✕", key=f"del_{i}", help="Delete this segment"):
+                        delete_idx = i
+            if delete_idx is not None:
+                st.session_state.captured_chunks.pop(delete_idx)
+                st.rerun()
 
     # ── Enter-to-capture: form submits on Enter ─────────────────────────────
     with st.form(key="capture_form", clear_on_submit=True):
@@ -131,9 +180,25 @@ if st.session_state.phase == "capture":
         )
         submitted = st.form_submit_button("📌 Capture", use_container_width=True)
         if submitted and notes_input.strip():
-            st.session_state.captured_chunks.append(notes_input.strip())
-            st.session_state.confirm_generate = False  # reset confirmation on new input
+            ts = datetime.datetime.now().strftime("%H:%M")
+            st.session_state.captured_chunks.append((ts, notes_input.strip()))
+            st.session_state.confirm_generate = False
             st.rerun()
+
+    # ── Long note area ───────────────────────────────────────────────────────
+    with st.expander("📝 Long Note (multi-line)"):
+        long_note = st.text_area(
+            "Paste or type a longer note here",
+            key="long_note_area",
+            height=150,
+            placeholder="Use this for pasting larger blocks of text, agendas, etc.",
+        )
+        if st.button("📌 Capture Long Note", use_container_width=True):
+            if long_note.strip():
+                ts = datetime.datetime.now().strftime("%H:%M")
+                st.session_state.captured_chunks.append((ts, long_note.strip()))
+                st.session_state.confirm_generate = False
+                st.rerun()
 
     # ── Generate Notes (with confirmation) ───────────────────────────────────
     can_generate = bool(st.session_state.captured_chunks)
@@ -159,7 +224,7 @@ if st.session_state.phase == "capture":
                 if not meeting_subject.strip():
                     st.error("Please enter a meeting subject in the sidebar.")
                 else:
-                    full_notes = "\n\n".join(st.session_state.captured_chunks)
+                    full_notes = "\n\n".join(text for _, text in st.session_state.captured_chunks)
                     with st.spinner("Generating structured notes..."):
                         try:
                             messages = build_generation_messages(
@@ -167,8 +232,9 @@ if st.session_state.phase == "capture":
                                 meeting_subject=meeting_subject,
                                 date=today_str,
                                 key_player=key_player or "Not specified",
+                                attendees=meeting_attendees if meeting_attendees else None,
                             )
-                            result = get_completion(SYSTEM_PROMPT, messages)
+                            result = get_completion(get_system_prompt(), messages)
                             st.session_state.structured_output = result
                             st.session_state.confirm_generate = False
                             st.session_state.phase = "review"
@@ -185,8 +251,26 @@ if st.session_state.phase == "capture":
 elif st.session_state.phase == "review":
     st.header("Review & Refine")
 
-    # Display current structured output
-    st.markdown(st.session_state.structured_output)
+    # Direct edit toggle
+    st.session_state.direct_edit_mode = st.toggle(
+        "✏️ Direct Edit Mode", value=st.session_state.direct_edit_mode
+    )
+
+    if st.session_state.direct_edit_mode:
+        edited = st.text_area(
+            "Edit the output directly:",
+            value=st.session_state.structured_output,
+            height=500,
+            key="direct_edit_area",
+        )
+        if st.button("💾 Save Edits", use_container_width=True):
+            st.session_state.structured_output = edited
+            st.session_state.direct_edit_mode = False
+            st.rerun()
+    else:
+        # Display current structured output
+        st.markdown(st.session_state.structured_output)
+
     st.divider()
 
     # Refinement chat
@@ -204,7 +288,7 @@ elif st.session_state.phase == "review":
     with col1:
         if st.button("🔄 Apply Change", use_container_width=True, type="secondary"):
             if refine_input.strip():
-                full_notes = "\n\n".join(st.session_state.captured_chunks)
+                full_notes = "\n\n".join(text for _, text in st.session_state.captured_chunks)
                 with st.spinner("Applying changes..."):
                     try:
                         messages = build_refinement_messages(
@@ -213,7 +297,7 @@ elif st.session_state.phase == "review":
                             chat_history=st.session_state.chat_history,
                             user_request=refine_input.strip(),
                         )
-                        result = get_completion(REFINE_SYSTEM_PROMPT, messages)
+                        result = get_completion(get_refine_system_prompt(), messages)
                         st.session_state.structured_output = result
                         st.session_state.chat_history.append(
                             {"role": "user", "content": refine_input.strip()}
@@ -247,7 +331,7 @@ elif st.session_state.phase == "review":
                         is_unscheduled=is_unscheduled,
                     )
 
-                    raw_notes = "\n\n".join(st.session_state.captured_chunks)
+                    raw_notes = "\n\n".join(text for _, text in st.session_state.captured_chunks)
                     html_output = markdown_to_outlook_html(st.session_state.structured_output)
 
                     paths = save_meeting_files(

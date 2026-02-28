@@ -10,6 +10,25 @@ load_dotenv()
 NOTES_ROOT = os.getenv("NOTES_ROOT", os.path.expanduser("~/MeetingNotes"))
 
 
+def validate_notes_root() -> tuple[bool, str]:
+    """Check if NOTES_ROOT is accessible and writable.
+
+    Returns:
+        Tuple of (is_valid, message).
+    """
+    if not os.path.exists(NOTES_ROOT):
+        try:
+            os.makedirs(NOTES_ROOT, exist_ok=True)
+            return True, f"Created: {NOTES_ROOT}"
+        except OSError as e:
+            return False, f"Cannot create NOTES_ROOT '{NOTES_ROOT}': {e}"
+
+    if not os.access(NOTES_ROOT, os.W_OK):
+        return False, f"NOTES_ROOT '{NOTES_ROOT}' is not writable (permissions or offline?)."
+
+    return True, NOTES_ROOT
+
+
 def _sanitize_name(name: str) -> str:
     """Remove or replace characters that are invalid in folder/file names."""
     sanitized = re.sub(r'[<>:"/\\|?*]', "", name)

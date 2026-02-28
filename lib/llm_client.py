@@ -1,11 +1,10 @@
-"""LLM client abstraction. Supports Anthropic and OpenAI-compatible endpoints."""
+"""LLM client — OpenAI-compatible endpoint only."""
 
 import os
 from dotenv import load_dotenv
 
 load_dotenv()
 
-PROVIDER = os.getenv("LLM_PROVIDER", "anthropic").lower()
 MAX_TOKENS = int(os.getenv("MAX_TOKENS", "4096"))
 
 
@@ -19,26 +18,6 @@ def get_completion(system_prompt: str, messages: list) -> str:
     Returns:
         The assistant's response text.
     """
-    if PROVIDER == "anthropic":
-        return _anthropic_completion(system_prompt, messages)
-    else:
-        return _openai_completion(system_prompt, messages)
-
-
-def _anthropic_completion(system_prompt: str, messages: list) -> str:
-    import anthropic
-
-    client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
-    response = client.messages.create(
-        model=os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-20250514"),
-        max_tokens=MAX_TOKENS,
-        system=system_prompt,
-        messages=messages,
-    )
-    return response.content[0].text
-
-
-def _openai_completion(system_prompt: str, messages: list) -> str:
     from openai import OpenAI
 
     client = OpenAI(

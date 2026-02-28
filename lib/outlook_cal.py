@@ -91,9 +91,9 @@ def get_meeting_display_label(meeting: dict) -> str:
 def reply_to_meeting_with_notes(entry_id: str, html_body: str, subject: str) -> str:
     """Create a Reply-All to a meeting invite and populate with HTML notes.
 
-    This finds the original meeting by EntryID, creates a ReplyAll on the
-    associated email (forward if no direct mail item), sets the HTML body,
-    and displays it for the user to review before sending.
+    Searches the Inbox for the corresponding meeting request so the reply
+    threads correctly under the original invite. Falls back to creating
+    a new mail item addressed to all attendees if no invite is found.
 
     Args:
         entry_id: The Outlook EntryID of the calendar appointment.
@@ -114,30 +114,53 @@ def reply_to_meeting_with_notes(entry_id: str, html_body: str, subject: str) -> 
         # Get the appointment by EntryID
         appt = namespace.GetItemFromID(entry_id)
 
-        # Try to create a ReplyAll — works on MeetingItem (the invite in inbox)
-        # AppointmentItem doesn't have ReplyAll, so we forward instead
+        mail = None
+
+        # Strategy 1: Find the meeting request in Inbox and ReplyAll to it
+        # This preserves email threading in Outlook
         try:
-            # ForwardAsVcal won't work; use Forward to create a mail item
-            # that goes to all attendees
-            mail = appt.Forward()
+            inbox = namespace.GetDefaultFolder(6)  # 6 = olFolderInbox
+            items = inbox.Items
+            # Search for the meeting request by subject
+            meeting_filter = f"@SQL=\"urn:schemas:httpmail:subject\" LIKE '%{subject.replace(chr(39), chr(39)+chr(39))}%'"
+            filtered = items.Restrict(meeting_filter)
+            for item in filtered:
+                # MeetingItem class = 53
+                try:
+                    if item.Class == 53 or item.MessageClass.startswith("IPM.Schedule"):
+                        mail = item.ReplyAll()
+                        break
+                except Exception:
+                    continue
         except Exception:
-            # Fallback: create a new mail item
+            pass
+
+        # Strategy 2: Forward the appointment (loses threading but works)
+        if mail is None:
+            try:
+                mail = appt.Forward()
+                # Clear Forward recipients and re-add from attendees
+                try:
+                    while mail.Recipients.Count > 0:
+                        mail.Recipients.Remove(1)
+                except Exception:
+                    pass
+                try:
+                    for recipient in appt.Recipients:
+                        mail.Recipients.Add(recipient.Address or recipient.Name)
+                except Exception:
+                    pass
+            except Exception:
+                pass
+
+        # Strategy 3: New mail item as last resort
+        if mail is None:
             mail = outlook.CreateItem(0)  # 0 = olMailItem
-            mail.Subject = f"RE: {subject}"
-
-        # Build recipient list from the appointment's attendees
-        # Clear any pre-filled recipients from Forward and rebuild
-        try:
-            while mail.Recipients.Count > 0:
-                mail.Recipients.Remove(1)
-        except Exception:
-            pass
-
-        try:
-            for recipient in appt.Recipients:
-                mail.Recipients.Add(recipient.Address or recipient.Name)
-        except Exception:
-            pass
+            try:
+                for recipient in appt.Recipients:
+                    mail.Recipients.Add(recipient.Address or recipient.Name)
+            except Exception:
+                pass
 
         mail.Subject = f"RE: {subject}"
         mail.HTMLBody = html_body

@@ -20,10 +20,7 @@ streamlit run app.py
 
 | Variable | Description |
 |---|---|
-| `LLM_PROVIDER` | `anthropic` or `openai` |
-| `ANTHROPIC_API_KEY` | Anthropic API key (testing) |
-| `ANTHROPIC_MODEL` | e.g., `claude-sonnet-4-20250514` |
-| `OPENAI_API_KEY` | Internal API key (production) |
+| `OPENAI_API_KEY` | Internal API key |
 | `OPENAI_BASE_URL` | Internal endpoint URL |
 | `OPENAI_MODEL` | Internal model name |
 | `NOTES_ROOT` | Root folder for saved notes (e.g., SharePoint shortcut path) |

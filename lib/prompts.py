@@ -1,7 +1,23 @@
 """Prompt templates for meeting note structuring."""
 
-SYSTEM_PROMPT = """You are a professional meeting scribe assistant for a financial services firm. \
+import datetime
+
+
+def get_system_prompt() -> str:
+    """Build the system prompt with today's date embedded."""
+    today = datetime.date.today()
+    date_str = today.strftime("%A, %B %d, %Y")  # e.g., "Friday, February 28, 2026"
+    return f"""You are a professional meeting scribe assistant for a financial services firm. \
 Your job is to transform raw, unstructured meeting notes into clear, professional structured meeting minutes.
+
+Today's date is {date_str}.
+
+DATE AWARENESS:
+- Use today's date to resolve all relative time references in the notes.
+- If notes say "next Monday", "end of week", "by Friday", etc., convert them to actual dates \
+(e.g., "next Monday" → "Monday, March 2, 2026") while keeping the original phrasing in parentheses.
+- If a relative date is ambiguous, include both the original phrase and your best interpretation \
+marked as "[estimated date]".
 
 CRITICAL RULES:
 1. ONLY include information explicitly present in the raw notes. Never infer, assume, or fabricate details.
@@ -31,9 +47,9 @@ OUTPUT FORMAT (use exactly this structure):
 
 📋 Tool-Assisted Meeting Notes — Verify for Accuracy
 
-**Meeting:** {meeting_subject}
-**Date:** {date}
-**Key Contact:** {key_player}
+**Meeting:** {{meeting_subject}}
+**Date:** {{date}}
+**Key Contact:** {{key_player}}
 
 ---
 
@@ -69,8 +85,14 @@ OUTPUT FORMAT (use exactly this structure):
 [List if mentioned in notes, otherwise "Not captured"]
 """
 
-REFINE_SYSTEM_PROMPT = """You are refining previously generated meeting notes based on the user's feedback. \
+def get_refine_system_prompt() -> str:
+    """Build the refinement system prompt with today's date embedded."""
+    today = datetime.date.today()
+    date_str = today.strftime("%A, %B %d, %Y")
+    return f"""You are refining previously generated meeting notes based on the user's feedback. \
 You have access to the original raw notes and the current structured output.
+
+Today's date is {date_str}. Use it to resolve any relative date references.
 
 RULES:
 1. Apply ONLY the changes the user requests. Do not restructure or rephrase other sections.
@@ -86,13 +108,18 @@ Professionalize tone on all changes. Never mention that scrubbing is occurring.
 """
 
 
-def build_generation_messages(raw_notes: str, meeting_subject: str, date: str, key_player: str) -> list:
+def build_generation_messages(
+    raw_notes: str, meeting_subject: str, date: str, key_player: str,
+    attendees: list[str] | None = None,
+) -> list:
     """Build the message list for initial note generation."""
+    attendee_str = ", ".join(attendees) if attendees else "Not captured"
     user_content = f"""Here are the raw meeting notes to structure:
 
+Today's Date: {date} (use this to resolve any relative date references like "next Monday", "by Friday", etc.)
 Meeting Subject: {meeting_subject}
-Date: {date}
 Key Contact: {key_player}
+Attendees: {attendee_str}
 
 --- RAW NOTES START ---
 {raw_notes}
@@ -125,9 +152,11 @@ Please apply the following change:
 Return the COMPLETE updated structured output.""",
     }
 
-    # If there's chat history, include prior refinements for continuity
+    # Include only the last 2 refinement exchanges to avoid token bloat.
+    # Prior refinements are already baked into current_output.
+    recent_history = chat_history[-4:] if len(chat_history) > 4 else chat_history
     messages = []
-    for entry in chat_history:
+    for entry in recent_history:
         messages.append({"role": entry["role"], "content": entry["content"]})
     messages.append(context_message)
 
