@@ -1,6 +1,9 @@
 """Outlook calendar integration via win32com. Gracefully degrades on non-Windows systems."""
 
 import datetime
+import logging
+
+logger = logging.getLogger(__name__)
 
 OUTLOOK_AVAILABLE = False
 
@@ -42,8 +45,8 @@ def get_todays_meetings() -> list[dict]:
             f"[Start] < '{tomorrow.strftime('%m/%d/%Y')} 12:00 AM'"
         )
         appointments = calendar.Items
-        appointments.Sort("[Start]")
         appointments.IncludeRecurrences = True
+        appointments.Sort("[Start]")
         filtered = appointments.Restrict(restriction)
 
         meetings = []
@@ -82,7 +85,7 @@ def get_todays_meetings() -> list[dict]:
         return meetings
 
     except Exception as e:
-        print(f"Outlook calendar error: {e}")
+        logger.error("Outlook calendar error: %s", e)
         return []
     finally:
         try:

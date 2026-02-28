@@ -2,7 +2,7 @@
 
 import datetime
 import streamlit as st
-from lib.llm_client import get_completion
+from lib.llm_client import get_completion, validate_llm_config
 from lib.prompts import (
     get_system_prompt,
     get_refine_system_prompt,
@@ -37,6 +37,7 @@ DEFAULTS = {
     "direct_edit_mode": False,   # toggle for manual editing in review phase
     "meeting_confirmed": False,  # gate: user must explicitly confirm meeting choice
     "confirm_change_meeting": False,  # two-step unlock when notes exist
+    "finalized_html": None,          # cached HTML output after finalization
 }
 for key, val in DEFAULTS.items():
     if key not in st.session_state:
@@ -54,8 +55,15 @@ _notes_ok, _notes_msg = validate_notes_root()
 if not _notes_ok:
     st.error(f"⚠️ Storage path error: {_notes_msg}")
     st.stop()
-
-# ── Sidebar: Meeting Setup ───────────────────────────────────────────────────
+_llm_ok, _llm_msg = validate_llm_config()
+if not _llm_ok:
+    st.error(f"⚠️ LLM config error: {_llm_msg}")
+    st.stop()
+# ── Sidebar: Meeting Setup ───────────────────────────────────────────────────# Initialize sidebar-scoped variables with safe defaults
+meeting_subject = ""
+meeting_time = None
+meeting_attendees: list[str] = []
+meeting_body = ""
 with st.sidebar:
     st.title("📋 AI Scribe")
     st.caption("Meeting notes → structured minutes")
@@ -412,6 +420,7 @@ elif st.session_state.phase == "review":
                     )
 
                     st.session_state.meeting_folder = folder
+                    st.session_state.finalized_html = html_output
                     st.session_state.phase = "finalized"
                     st.rerun()
 
@@ -426,7 +435,9 @@ elif st.session_state.phase == "finalized":
     st.divider()
 
     # ── Copy for Outlook ─────────────────────────────────────────────────────
-    html_output = markdown_to_outlook_html(st.session_state.structured_output)
+    html_output = st.session_state.finalized_html or markdown_to_outlook_html(
+        st.session_state.structured_output
+    )
 
     st.subheader("📧 Send to Outlook")
 

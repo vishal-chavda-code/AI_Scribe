@@ -29,12 +29,24 @@ def validate_notes_root() -> tuple[bool, str]:
     return True, NOTES_ROOT
 
 
+_WINDOWS_RESERVED = frozenset({
+    "CON", "PRN", "AUX", "NUL",
+    "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
+    "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+})
+
+
 def _sanitize_name(name: str) -> str:
     """Remove or replace characters that are invalid in folder/file names."""
     sanitized = re.sub(r'[<>:"/\\|?*]', "", name)
     sanitized = sanitized.strip(". ")
     sanitized = re.sub(r"\s+", "_", sanitized)
-    return sanitized[:80]  # Cap length for filesystem safety
+    sanitized = sanitized[:80]  # Cap length for filesystem safety
+    # Guard against Windows reserved device names
+    if sanitized.upper() in _WINDOWS_RESERVED:
+        sanitized = f"_{sanitized}"
+    # Guard against empty result (subject was all special chars)
+    return sanitized or "untitled"
 
 
 def _get_date_folder() -> str:

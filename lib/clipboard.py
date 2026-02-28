@@ -1,5 +1,9 @@
 """Windows clipboard helper — copies HTML in CF_HTML format for Outlook paste."""
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 def _build_cf_html(html_fragment: str) -> bytes:
     """Wrap an HTML fragment in the CF_HTML clipboard envelope.
@@ -35,14 +39,16 @@ def copy_html_to_clipboard(html: str) -> bool:
         cf_html_data = _build_cf_html(html)
 
         win32clipboard.OpenClipboard()
-        win32clipboard.EmptyClipboard()
-        # Also set plain-text version as fallback
-        win32clipboard.SetClipboardData(win32con.CF_UNICODETEXT, html)
-        win32clipboard.SetClipboardData(CF_HTML, cf_html_data)
-        win32clipboard.CloseClipboard()
+        try:
+            win32clipboard.EmptyClipboard()
+            # Also set plain-text version as fallback
+            win32clipboard.SetClipboardData(win32con.CF_UNICODETEXT, html)
+            win32clipboard.SetClipboardData(CF_HTML, cf_html_data)
+        finally:
+            win32clipboard.CloseClipboard()
         return True
     except Exception as e:
-        print(f"Clipboard error: {e}")
+        logger.error("Clipboard error: %s", e)
         return False
 
 
@@ -56,10 +62,12 @@ def copy_text_to_clipboard(text: str) -> bool:
         import win32con
 
         win32clipboard.OpenClipboard()
-        win32clipboard.EmptyClipboard()
-        win32clipboard.SetClipboardData(win32con.CF_UNICODETEXT, text)
-        win32clipboard.CloseClipboard()
+        try:
+            win32clipboard.EmptyClipboard()
+            win32clipboard.SetClipboardData(win32con.CF_UNICODETEXT, text)
+        finally:
+            win32clipboard.CloseClipboard()
         return True
     except Exception as e:
-        print(f"Clipboard error: {e}")
+        logger.error("Clipboard error: %s", e)
         return False

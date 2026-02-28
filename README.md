@@ -24,7 +24,8 @@ streamlit run app.py
 | `OPENAI_BASE_URL` | Internal endpoint URL |
 | `OPENAI_MODEL` | Internal model name |
 | `NOTES_ROOT` | Root folder for saved notes (e.g., SharePoint shortcut path) |
-| `MAX_TOKENS` | Max response tokens (default 4096) |
+| `MAX_TOKENS` | Max response tokens (default 16384) |
+| `LLM_TIMEOUT` | LLM request timeout in seconds (default 120) |
 
 ## Workflow
 
@@ -59,7 +60,7 @@ pip install pywin32
 
 ## Notes
 
-- Outlook HTML copy uses the ClipboardItem API — works in Chrome/Edge. If clipboard access is denied, use the raw HTML fallback.
+- Outlook HTML copy uses the Windows `win32clipboard` API with the `CF_HTML` format for rich paste directly into Outlook. If clipboard access fails, use the HTML download fallback.
 - The LLM is instructed to never hallucinate. Missing info is marked `[unclear]` or `TBD`.
 - Protective scrubbing is built into the prompt — personal commentary, editorializing, side conversations, and anything that could embarrass a participant or the scribe is silently removed. Substantive disagreements are preserved in professional language.
 - Disclaimer `📋 Tool-Assisted Meeting Notes` is auto-prepended to every output.
