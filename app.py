@@ -36,6 +36,7 @@ DEFAULTS = {
     "selected_meeting": None,    # full meeting dict from Outlook
     "direct_edit_mode": False,   # toggle for manual editing in review phase
     "meeting_confirmed": False,  # gate: user must explicitly confirm meeting choice
+    "confirm_change_meeting": False,  # two-step unlock when notes exist
 }
 for key, val in DEFAULTS.items():
     if key not in st.session_state:
@@ -132,9 +133,36 @@ with st.sidebar:
             st.caption("Enter a meeting subject to begin.")
     else:
         st.success(f"🔒 Locked: **{meeting_subject}**")
-        if st.button("🔓 Change Meeting", use_container_width=True):
-            st.session_state.meeting_confirmed = False
-            st.rerun()
+
+        if not st.session_state.confirm_change_meeting:
+            if st.button("🔓 Change Meeting", use_container_width=True):
+                if st.session_state.captured_chunks or st.session_state.structured_output:
+                    st.session_state.confirm_change_meeting = True
+                    st.rerun()
+                else:
+                    st.session_state.meeting_confirmed = False
+                    st.rerun()
+        else:
+            n = len(st.session_state.captured_chunks)
+            st.warning(
+                f"⚠️ You have **{n} captured segment{'s' if n != 1 else ''}**. "
+                "Changing the meeting will **discard** all notes and output."
+            )
+            cm_keep, cm_discard, cm_cancel = st.columns([1, 1, 1])
+            with cm_keep:
+                if st.button("Keep & Switch", use_container_width=True, help="Unlock meeting but keep your notes"):
+                    st.session_state.confirm_change_meeting = False
+                    st.session_state.meeting_confirmed = False
+                    st.rerun()
+            with cm_discard:
+                if st.button("Discard & Switch", use_container_width=True, type="primary"):
+                    st.session_state.confirm_change_meeting = False
+                    reset_session()
+                    st.rerun()
+            with cm_cancel:
+                if st.button("Cancel", key="cancel_change", use_container_width=True):
+                    st.session_state.confirm_change_meeting = False
+                    st.rerun()
 
     st.divider()
 
