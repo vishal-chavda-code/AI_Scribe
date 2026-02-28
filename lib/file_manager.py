@@ -1,0 +1,107 @@
+"""File manager for saving and organizing meeting notes."""
+
+import os
+import re
+import datetime
+from dotenv import load_dotenv
+
+load_dotenv()
+
+NOTES_ROOT = os.getenv("NOTES_ROOT", os.path.expanduser("~/MeetingNotes"))
+
+
+def _sanitize_name(name: str) -> str:
+    """Remove or replace characters that are invalid in folder/file names."""
+    sanitized = re.sub(r'[<>:"/\\|?*]', "", name)
+    sanitized = sanitized.strip(". ")
+    sanitized = re.sub(r"\s+", "_", sanitized)
+    return sanitized[:80]  # Cap length for filesystem safety
+
+
+def _get_date_folder() -> str:
+    """Get or create today's date folder."""
+    today = datetime.date.today().isoformat()  # e.g., 2026-02-28
+    date_path = os.path.join(NOTES_ROOT, today)
+    os.makedirs(date_path, exist_ok=True)
+    return date_path
+
+
+def _get_next_sequence(date_folder: str) -> int:
+    """Determine the next sequence number for today's meetings."""
+    existing = [
+        d for d in os.listdir(date_folder)
+        if os.path.isdir(os.path.join(date_folder, d))
+    ] if os.path.exists(date_folder) else []
+
+    max_seq = 0
+    for dirname in existing:
+        try:
+            seq = int(dirname.split("_")[0])
+            max_seq = max(max_seq, seq)
+        except (ValueError, IndexError):
+            pass
+
+    return max_seq + 1
+
+
+def build_meeting_folder(
+    meeting_subject: str,
+    start_time: str | None = None,
+    is_unscheduled: bool = False,
+) -> str:
+    """Create and return the path for a meeting's output folder.
+
+    Folder format: {seq}_{time}_{subject} or {seq}_{time}_Unscheduled_{subject}
+
+    Args:
+        meeting_subject: The meeting name or topic.
+        start_time: Time string like '0930'. Defaults to current time.
+        is_unscheduled: Whether this is an unscheduled/ad-hoc meeting.
+
+    Returns:
+        Full path to the created meeting folder.
+    """
+    date_folder = _get_date_folder()
+    seq = _get_next_sequence(date_folder)
+
+    if start_time is None:
+        start_time = datetime.datetime.now().strftime("%H%M")
+
+    subject_clean = _sanitize_name(meeting_subject)
+    prefix = "Unscheduled_" if is_unscheduled else ""
+    folder_name = f"{seq:02d}_{start_time}_{prefix}{subject_clean}"
+
+    meeting_path = os.path.join(date_folder, folder_name)
+    os.makedirs(meeting_path, exist_ok=True)
+    return meeting_path
+
+
+def save_meeting_files(
+    meeting_folder: str,
+    raw_notes: str,
+    structured_text: str,
+    structured_html: str,
+) -> dict:
+    """Save all meeting artifacts to the designated folder.
+
+    Returns:
+        Dict with paths to each saved file.
+    """
+    paths = {}
+
+    raw_path = os.path.join(meeting_folder, "raw_input.txt")
+    with open(raw_path, "w", encoding="utf-8") as f:
+        f.write(raw_notes)
+    paths["raw"] = raw_path
+
+    txt_path = os.path.join(meeting_folder, "structured_output.txt")
+    with open(txt_path, "w", encoding="utf-8") as f:
+        f.write(structured_text)
+    paths["txt"] = txt_path
+
+    html_path = os.path.join(meeting_folder, "structured_output.html")
+    with open(html_path, "w", encoding="utf-8") as f:
+        f.write(structured_html)
+    paths["html"] = html_path
+
+    return paths
