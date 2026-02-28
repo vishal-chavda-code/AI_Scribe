@@ -111,16 +111,29 @@ Professionalize tone on all changes. Never mention that scrubbing is occurring.
 def build_generation_messages(
     raw_notes: str, meeting_subject: str, date: str, key_player: str,
     attendees: list[str] | None = None,
+    meeting_body: str | None = None,
 ) -> list:
     """Build the message list for initial note generation."""
     attendee_str = ", ".join(attendees) if attendees else "Not captured"
+
+    # Include meeting invite body as supplementary context if available
+    body_section = ""
+    if meeting_body and meeting_body.strip():
+        body_section = f"""\n--- MEETING INVITE BODY (for context only — agenda, pre-read, etc.) ---
+{meeting_body.strip()}
+--- END MEETING INVITE BODY ---
+
+Note: The invite body above is supplementary context. It may contain agenda items, dial-in info, \
+or pre-read material. Use it to better understand the meeting's purpose and to organize topics, \
+but the RAW NOTES below are the primary source of what was actually discussed.\n"""
+
     user_content = f"""Here are the raw meeting notes to structure:
 
 Today's Date: {date} (use this to resolve any relative date references like "next Monday", "by Friday", etc.)
 Meeting Subject: {meeting_subject}
 Key Contact: {key_player}
 Attendees: {attendee_str}
-
+{body_section}
 --- RAW NOTES START ---
 {raw_notes}
 --- RAW NOTES END ---

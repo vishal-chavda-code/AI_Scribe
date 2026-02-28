@@ -95,12 +95,17 @@ with st.sidebar:
                 st.caption(f"Attendees: {', '.join(meeting_attendees[:5])}")
                 if len(meeting_attendees) > 5:
                     st.caption(f"  +{len(meeting_attendees) - 5} more")
+            meeting_body = selected_meeting.get("body", "")
+            if meeting_body:
+                with st.expander("📄 Meeting Invite Body", expanded=False):
+                    st.text(meeting_body[:2000] + ("..." if len(meeting_body) > 2000 else ""))
         else:
             st.warning("No meetings found for today. Using Unscheduled mode.")
             meeting_source = "Unscheduled"
             meeting_subject = ""
             meeting_time = None
             meeting_attendees = []
+            meeting_body = ""
 
     if meeting_source == "Unscheduled":
         meeting_subject = st.text_input(
@@ -109,6 +114,7 @@ with st.sidebar:
         )
         meeting_time = None
         meeting_attendees = []
+        meeting_body = ""
 
     key_player = st.text_input(
         "Key Player / Contact", placeholder="e.g., J. Smith",
@@ -296,6 +302,7 @@ if st.session_state.phase == "capture":
                                 date=today_str,
                                 key_player=key_player or "Not specified",
                                 attendees=meeting_attendees if meeting_attendees else None,
+                                meeting_body=meeting_body if meeting_body else None,
                             )
                             result = get_completion(get_system_prompt(), messages)
                             st.session_state.structured_output = result

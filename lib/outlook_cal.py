@@ -62,6 +62,13 @@ def get_todays_meetings() -> list[dict]:
             except Exception:
                 pass
 
+            # Capture the meeting body (agenda / pre-read / dial-in info)
+            body = ""
+            try:
+                body = (appt.Body or "").strip()
+            except Exception:
+                pass
+
             meetings.append({
                 "subject": appt.Subject,
                 "start_time": appt.Start.strftime("%H:%M"),
@@ -69,6 +76,7 @@ def get_todays_meetings() -> list[dict]:
                 "organizer": appt.Organizer,
                 "attendees": attendee_list,
                 "entry_id": entry_id,
+                "body": body,
             })
 
         return meetings
