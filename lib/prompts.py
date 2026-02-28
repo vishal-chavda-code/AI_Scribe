@@ -20,7 +20,8 @@ DATE AWARENESS:
 marked as "[estimated date]".
 
 CRITICAL RULES:
-1. ONLY include information explicitly present in the raw notes. Never infer, assume, or fabricate details.
+1. ONLY include information explicitly present in the raw notes. Never infer, assume, or fabricate \
+details about what was discussed.
 2. If a thought is incomplete or unclear, include it with "[unclear]" or "[incomplete]" rather than guessing.
 3. If no action owner is explicitly mentioned, write "Owner: TBD" — do not guess.
 4. Organize discussion points by TOPIC, not chronologically. Group related fragments together.
@@ -42,6 +43,24 @@ If the underlying point has business value, rephrase it constructively. If it do
 they're talking about", "missed that part"). If context was missed, simply omit that section.
 13. When in doubt about whether something is professional enough to include, omit it. \
 The notes should read as though a composed professional wrote them in real time, not as raw stream-of-consciousness.
+
+MEETING INVITE BODY (when provided):
+14. The meeting invite body represents the meeting's STATED PURPOSE — agenda items, pre-reads, \
+topics the organizer intended to cover. Treat it as the "plan" for the meeting.
+15. IGNORE logistical noise: Teams/Zoom/WebEx join links, dial-in numbers, passcodes, \
+calendar boilerplate, legal disclaimers, and "Do not forward" notices. These have zero content value.
+16. USE the substantive parts of the invite body (agenda items, discussion topics, background context) to:
+   - Inform topic headers and organization of the discussion summary
+   - Clarify abbreviated or ambiguous references in the raw notes (e.g., if notes say "the proposal" \
+and the invite body describes a specific proposal, use that context)
+   - Provide framing for what the meeting was convened to address
+17. TRACK AGENDA COVERAGE: Compare what the invite body said the meeting was about against what the \
+raw notes show was actually discussed. If significant agenda items were NOT discussed, note them \
+in the OPEN QUESTIONS / FOLLOW-UPS section as unaddressed (e.g., "Agenda item 'Q3 budget review' \
+was not covered — may require follow-up"). If the meeting substantially departed from the stated agenda, \
+briefly note the departure in the Discussion Summary intro.
+18. This is NOT fabrication — you are comparing two real inputs (invite vs. notes) and flagging gaps. \
+Do NOT invent discussion content for agenda items that weren't covered. Simply flag them as unaddressed.
 
 OUTPUT FORMAT (use exactly this structure):
 
@@ -116,16 +135,16 @@ def build_generation_messages(
     """Build the message list for initial note generation."""
     attendee_str = ", ".join(attendees) if attendees else "Not captured"
 
-    # Include meeting invite body as supplementary context if available
+    # Include meeting invite body as contextual anchor if available
     body_section = ""
     if meeting_body and meeting_body.strip():
-        body_section = f"""\n--- MEETING INVITE BODY (for context only — agenda, pre-read, etc.) ---
+        body_section = f"""\n--- MEETING INVITE BODY (stated purpose / agenda) ---
 {meeting_body.strip()}
 --- END MEETING INVITE BODY ---
 
-Note: The invite body above is supplementary context. It may contain agenda items, dial-in info, \
-or pre-read material. Use it to better understand the meeting's purpose and to organize topics, \
-but the RAW NOTES below are the primary source of what was actually discussed.\n"""
+The invite body above is the meeting's stated purpose and agenda. Use it as described in your \
+instructions: filter out join links and logistical noise, use substantive content to organize \
+and contextualize the notes, and flag any significant agenda items that went unaddressed.\n"""
 
     user_content = f"""Here are the raw meeting notes to structure:
 
